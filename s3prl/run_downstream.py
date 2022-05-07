@@ -89,6 +89,7 @@ def get_downstream_args():
     parser.add_argument('--disable_cudnn', action='store_true', help='Disable CUDNN')
 
     args = parser.parse_args()
+
     backup_files = []
 
     if args.expdir is None:
@@ -128,6 +129,7 @@ def get_downstream_args():
         cannot_overwrite_args = [
             'mode', 'evaluate_split', 'override',
             'backend', 'local_rank', 'past_exp',
+            'device', 'upstream_ckpt'
         ]
         args = update_args(args, ckpt['Args'], preserve_list=cannot_overwrite_args)
         os.makedirs(args.expdir, exist_ok=True)

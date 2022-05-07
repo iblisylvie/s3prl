@@ -147,6 +147,7 @@ class Runner():
             torch.distributed.barrier()
             upstream_refresh = False
 
+        print('-------> args device {}'.format(self.args.device))
         model = Upstream(
             ckpt = ckpt_path,
             model_config = self.args.upstream_model_config,

@@ -58,7 +58,101 @@ class DownstreamExpert(nn.Module):
 
     # Interface
     def get_dataloader(self, split):
-        return load_dataset(split, self.tokenizer, self.corpus)
+        # return load_dataset(split, self.tokenizer, self.corpus)
+        return None
+
+    def encode(self, s):
+      return self.tokenizer.encode(s)
+
+
+    def beam_search(self, features, beam_size):
+      from collections import defaultdict
+      from ctc_utils import log_add
+
+      # 1. Encoder forward and get CTC score
+      features = pad_sequence(features, batch_first=True)
+      features_len = torch.IntTensor([len(feat) for feat in features])
+      features = self.projector(features)
+      logits, log_probs_len = self.model(features, features_len)
+      maxlen = logits.size(1)
+      ctc_probs = nn.functional.log_softmax(logits, dim=-1)
+      ctc_probs = ctc_probs.squeeze(0)
+      # cur_hyps: (prefix, (blank_ending_score, none_blank_ending_score))
+      cur_hyps = [(tuple(), (0.0, -float('inf')))]
+      # 2. CTC beam search step by step
+      for t in range(0, maxlen):
+        logp = ctc_probs[t] # (vocab_size,)
+        # key: prefix, value (pb, pnb), default value(-inf, -inf)
+        next_hyps = defaultdict(lambda: (-float('inf'), -float('inf')))
+        # 2.1 First beam prune: select topk best
+        top_k_logp, top_k_index = logp.topk(beam_size)  # (beam_size,)
+        for s in top_k_index:
+          s = s.item()
+          ps = logp[s].item()
+          for prefix, (pb, pnb) in cur_hyps:
+            last = prefix[-1] if len(prefix) > 0 else None
+            if s == 0:  # blank
+              n_pb, n_pnb = next_hyps[prefix]
+              n_pb = log_add([n_pb, pb + ps, pnb + ps])
+              next_hyps[prefix] = (n_pb, n_pnb)
+            elif s == last:
+              #  Update *ss -> *s;
+              n_pb, n_pnb = next_hyps[prefix]
+              n_pnb = log_add([n_pnb, pnb + ps])
+              next_hyps[prefix] = (n_pb, n_pnb)
+              # Update *s-s -> *ss, - is for blank
+              n_prefix = prefix + (s, )
+              n_pb, n_pnb = next_hyps[n_prefix]
+              n_pnb = log_add([n_pnb, pb + ps])
+              next_hyps[n_prefix] = (n_pb, n_pnb)
+            else:
+              n_prefix = prefix + (s, )
+              n_pb, n_pnb = next_hyps[n_prefix]
+              n_pnb = log_add([n_pnb, pb + ps, pnb + ps])
+              next_hyps[n_prefix] = (n_pb, n_pnb)
+
+        # 2.2 Second beam prune
+        next_hyps = sorted(next_hyps.items(),
+                          key=lambda x: log_add(list(x[1])),
+                          reverse=True)
+        cur_hyps = next_hyps[:beam_size]
+      hyps = [(y[0], log_add([y[1][0], y[1][1]])) for y in cur_hyps]
+      print('beam search hyps')
+      print(hyps)
+      return hyps
+
+    def decode(self, pred_tokens):
+      filtered_tokens = [
+          token
+          for token in pred_tokens
+          if token != self.tokenizer.pad_idx and token != self.tokenizer.eos_idx
+      ]
+      hypothesis = self.tokenizer.decode(filtered_tokens, ignore_repeat=True)
+      return hypothesis
+
+
+    def inference(self, features):
+      features = pad_sequence(features, batch_first=True)
+      features_len = torch.IntTensor([len(feat) for feat in features])
+      features = self.projector(features)
+      logits, log_probs_len = self.model(features, features_len)
+      log_probs = nn.functional.log_softmax(logits, dim=-1)
+      pred_tokens = log_probs.argmax(dim=-1)
+
+      filtered_tokens = []
+      for pred_token in pred_tokens:
+        filtered_token = [
+          token
+          for token in pred_token.tolist()
+          if token != self.tokenizer.pad_idx and token != self.tokenizer.eos_idx
+        ]
+        filtered_tokens.append(filtered_token)
+        hypothesis = [
+          self.tokenizer.decode(h, ignore_repeat=True) for h in filtered_tokens
+        ]
+        # print('-------> hypothesis')
+        # print(hypothesis)
+        return log_probs
 
     # Interface
     def forward(self, split, features, labels, filenames, records, **kwargs):

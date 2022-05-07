@@ -55,6 +55,8 @@ def create_dataset(split, tokenizer, name, bucketing, batch_size, **kwargs):
         from .corpus.libriphone import LibriPhoneDataset as Dataset
     elif name.lower() in {"common_voice", "sbcsae"}:
         from .corpus.common_voice import CommonVoiceDataset as Dataset
+    elif name.lower() == "common_voice_phone":
+        from .corpus.common_voice_phone import CommonVoicePhoneDataset as Dataset
     else:
         raise NotImplementedError
 

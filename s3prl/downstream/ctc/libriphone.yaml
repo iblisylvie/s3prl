@@ -52,7 +52,7 @@ downstream_expert:
   
   text:
     mode: 'word'                       # 'character'/'word'/'subword'
-    vocab_file: 'downstream/ctc/vocab/phoneme.txt'
+    vocab_file: '/Users/qli/Desktop/BodyPark/speech/s3prl/s3prl/downstream/ctc/vocab/phoneme.txt'
   
   model:
     project_dim: 256
